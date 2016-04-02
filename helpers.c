@@ -38,14 +38,14 @@ ssize_t write_(int fd, void *buf, size_t count) {
 	return cur_write;
 }
 
-int exec(char * command, char ** args) {
+int exec(execargs_t * execargs) {
 	pid_t child = fork();
 	if(child == -1) { //error occured
 		return -1;
 	}
 	int status;
 	if(child == 0) { //child process
-		if(execvp(command, args) == -1) { //error occured
+		if(execvp(execargs->command, execargs->args) == -1) { //error occured
 			return -1;
 		}
 	} else { //parent process
