@@ -1,9 +1,12 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/wait.h>
 
 #include "helpers.h"
+
+#define BUF_SIZE 1024
 
 void check(int result, char * msg) {
 	if(result == -1) {
@@ -103,7 +106,100 @@ int runpiped(execargs_t ** commands, size_t n) {
 	}
 
 	//restore context
-	check(dup2(stdin_def, STDIN_FILENO), "dup22 failed");
+	check(dup2(stdin_def, STDIN_FILENO), "dup2 failed");
+	check(close(stdin_def), "close failed");
 
 	return 0;
+}
+
+execargs_t * make_args_struct(char ** args) {
+	execargs_t * cur = (execargs_t *)malloc(sizeof(execargs_t *));
+	cur->command = args[0];
+	cur->args = args;
+	return cur;
+}
+
+void free_args_struct(execargs_t * cur) {
+	free(cur->args);
+	free(cur);
+}
+
+char * substring(const char * input, int offset, int len) {
+	char * dest = malloc(sizeof(char *));
+	strncpy(dest, input + offset, len);
+	return dest;
+}
+
+int is_whitespace(char c) {
+	return (c == ' ' || c == '\t' || c == '\r' || c == '\n');
+}
+
+char ** to_array(char * s) {
+	size_t pos = 0;
+	size_t len = strlen(s);
+	size_t count = 0;
+	// count words
+	while(pos < len) {
+		//skip spaces
+		while(pos < len && is_whitespace(s[pos])){
+			pos++;
+		}
+		size_t start = pos;
+		int word = 0;
+		while(pos < len && !is_whitespace(s[pos])){
+			word = 1;
+			pos++;
+		}
+		if(word) {
+			count++;
+		}
+	}
+
+	char ** cur = malloc(count * sizeof(char *));
+	pos = 0;
+	for(int i = 0; i < count; i++) {
+		while(pos < len && is_whitespace(s[pos])) {
+			pos++;
+		}
+		size_t start = pos;
+		int word = 0;
+		while(pos < len && !is_whitespace(s[pos])) {
+			pos++;
+			word = 1;
+		}
+		if(word) {
+			cur[i] = substring(s, start, pos - start);
+		}
+	}
+	return cur;
+}
+
+execargs_t ** read_and_split_in_commands() {
+	char buf[BUF_SIZE];
+	ssize_t cur_read = read_(STDIN_FILENO, buf, BUF_SIZE);
+	check(cur_read, "error in read_");
+	buf[cur_read] = 0;
+	//count commands;
+	int count = 1;
+	size_t len = strlen(buf);
+	for(size_t i = 0; i < len; i++) {
+		if(buf[i] == '|') {
+			count++;
+		}
+	}
+
+	execargs_t ** commands = malloc(count * sizeof(execargs_t *));
+	ssize_t pos = 0;
+	for(int i = 0; i < count; i++) {
+		ssize_t start = pos;
+		while(pos < len && buf[pos] != '|') {
+			pos++;
+		}
+		pos++;
+		char * command = substring(buf, start, pos - start - 1);
+		char ** cur = to_array(command);
+		commands[i] = make_args_struct(cur);
+	}
+
+	return commands;
 }
