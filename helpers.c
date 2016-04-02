@@ -1,4 +1,9 @@
 #include <stdio.h>
+#include <unistd.h>
+#include <sys/wait.h>
+#include <sys/types.h>
+
+#include "helpers.h"
 
 ssize_t read_(int fd, void *buf, size_t count) {
 	ssize_t total = 0;
@@ -31,4 +36,25 @@ ssize_t write_(int fd, void *buf, size_t count) {
 	}
 
 	return cur_write;
+}
+
+int exec(char * command, char ** args) {
+	pid_t child = fork();
+	if(child == -1) { //error occured
+		return -1;
+	}
+	int status;
+	if(child == 0) { //child process
+		if(execvp(command, args) == -1) { //error occured
+			return -1;
+		}
+	} else { //parent process
+		//wait for child to finish
+		do {
+			if(waitpid(child, &status, 0) == -1) {
+				return -1;
+			}
+		} while(!WIFEXITED(status));
+	}
+	return WEXITSTATUS(status);
 }
