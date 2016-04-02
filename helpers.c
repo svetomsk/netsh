@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/wait.h>
+#include <errno.h>
 
 #include "helpers.h"
 
@@ -29,6 +30,7 @@ ssize_t read_(int fd, void *buf, size_t count) {
 			total += cur_read;
 		}
 	}
+	printf("%s\n", "END OF READ");
 	return total;
 }
 
@@ -127,6 +129,7 @@ void free_args_struct(execargs_t * cur) {
 char * substring(const char * input, int offset, int len) {
 	char * dest = malloc(sizeof(char *));
 	strncpy(dest, input + offset, len);
+	dest[len] = 0;
 	return dest;
 }
 
@@ -154,8 +157,8 @@ char ** to_array(char * s) {
 			count++;
 		}
 	}
-
-	char ** cur = malloc(count * sizeof(char *));
+	
+	char ** cur = malloc((count + 1) * sizeof(char *));
 	pos = 0;
 	for(int i = 0; i < count; i++) {
 		while(pos < len && is_whitespace(s[pos])) {
@@ -169,24 +172,35 @@ char ** to_array(char * s) {
 		}
 		if(word) {
 			cur[i] = substring(s, start, pos - start);
+			printf("!%s!\n", cur[i]);
 		}
 	}
+	cur[count] = 0;
 	return cur;
 }
 
-execargs_t ** read_and_split_in_commands() {
-	char buf[BUF_SIZE];
-	ssize_t cur_read = read_(STDIN_FILENO, buf, BUF_SIZE);
-	check(cur_read, "error in read_");
-	buf[cur_read] = 0;
+static int commands_count;
+
+int get_commands_count() {
+	return commands_count;
+}
+
+execargs_t ** read_and_split_in_commands(char * input) {
+	char * buf = input;
+	// printf("read from %i\n", in);
+	// ssize_t cur_read = read_(in, buf, BUF_SIZE);
+	// check(cur_read, "error in read_");
+	// buf[cur_read] = 0;
 	//count commands;
 	int count = 1;
 	size_t len = strlen(buf);
+	printf("%s\n", buf);
 	for(size_t i = 0; i < len; i++) {
 		if(buf[i] == '|') {
 			count++;
 		}
 	}
+	commands_count = count;
 
 	execargs_t ** commands = malloc(count * sizeof(execargs_t *));
 	ssize_t pos = 0;
