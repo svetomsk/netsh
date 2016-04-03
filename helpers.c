@@ -81,7 +81,6 @@ int runpiped(execargs_t ** commands, size_t n) {
 	}
 	children = a;
 	count = n;
-	printf("stdout before = %i\n", STDIN_FILENO);
 
 	for(int i = 0; i < n; i++) {
 		if(i != n - 1) {
@@ -110,7 +109,6 @@ int runpiped(execargs_t ** commands, size_t n) {
 	//restore context
 	check(dup2(stdin_def, STDIN_FILENO), "dup2 failed");
 	check(close(stdin_def), "close failed");
-	printf("stdout after = %i\n", STDIN_FILENO);
 
 	return 0;
 }
@@ -173,7 +171,6 @@ char ** to_array(char * s) {
 		}
 		if(word) {
 			cur[i] = substring(s, start, pos - start);
-			printf("!%s!\n", cur[i]);
 		}
 	}
 	cur[count] = 0;
@@ -188,10 +185,6 @@ int get_commands_count() {
 
 execargs_t ** read_and_split_in_commands(char * input) {
 	char * buf = input;
-	// printf("read from %i\n", in);
-	// ssize_t cur_read = read_(in, buf, BUF_SIZE);
-	// check(cur_read, "error in read_");
-	// buf[cur_read] = 0;
 	//count commands;
 	int count = 1;
 	size_t len = strlen(buf);

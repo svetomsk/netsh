@@ -78,7 +78,6 @@ int main(int argc, char ** argv) {
 	int epoll_fd;
 	struct epoll_event event;
 	struct epoll_event *events;
-	printf("argc = %i", argc);
 
 	serv_sock = create_and_bind_socket(1234);
 	sock = make_non_blocking(serv_sock);
@@ -147,14 +146,16 @@ int main(int argc, char ** argv) {
 				int cur_read = read(events[i].data.fd, buf, sizeof(buf));
 				check(cur_read, "read error");
 				buf[cur_read] = 0;
+				if(strlen(buf) == 0) { // ^C ^D and others
+					continue;
+				}
 				execargs_t ** cur = read_and_split_in_commands(buf);
 				int out = dup(STDOUT_FILENO);
+				check(out, "dup error");
 				check(dup2(events[i].data.fd, STDOUT_FILENO), "dup2 error");
 				int res = runpiped(cur, get_commands_count());
 				check(dup2(out, STDOUT_FILENO), "dup2 error");
-				close(out);
-				// check(close(out), "close error");
-				// events[i].events ^= EPOLLIN;
+				check(close(out), "close error");
 			}
 		}
 	}	
