@@ -30,7 +30,6 @@ ssize_t read_(int fd, void *buf, size_t count) {
 			total += cur_read;
 		}
 	}
-	printf("%s\n", "END OF READ");
 	return total;
 }
 
@@ -82,6 +81,7 @@ int runpiped(execargs_t ** commands, size_t n) {
 	}
 	children = a;
 	count = n;
+	printf("stdout before = %i\n", STDIN_FILENO);
 
 	for(int i = 0; i < n; i++) {
 		if(i != n - 1) {
@@ -110,6 +110,7 @@ int runpiped(execargs_t ** commands, size_t n) {
 	//restore context
 	check(dup2(stdin_def, STDIN_FILENO), "dup2 failed");
 	check(close(stdin_def), "close failed");
+	printf("stdout after = %i\n", STDIN_FILENO);
 
 	return 0;
 }
@@ -157,7 +158,7 @@ char ** to_array(char * s) {
 			count++;
 		}
 	}
-	
+
 	char ** cur = malloc((count + 1) * sizeof(char *));
 	pos = 0;
 	for(int i = 0; i < count; i++) {
@@ -194,7 +195,6 @@ execargs_t ** read_and_split_in_commands(char * input) {
 	//count commands;
 	int count = 1;
 	size_t len = strlen(buf);
-	printf("%s\n", buf);
 	for(size_t i = 0; i < len; i++) {
 		if(buf[i] == '|') {
 			count++;

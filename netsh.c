@@ -78,6 +78,7 @@ int main(int argc, char ** argv) {
 	int epoll_fd;
 	struct epoll_event event;
 	struct epoll_event *events;
+	printf("argc = %i", argc);
 
 	serv_sock = create_and_bind_socket(1234);
 	sock = make_non_blocking(serv_sock);
@@ -96,12 +97,14 @@ int main(int argc, char ** argv) {
 	//main loop
 	while(1) {
 		int n, i;
+		printf("Waiting for events\n");
 		n = epoll_wait(epoll_fd, events, MAXEVENTS, -1);
+		printf("Got %i events to process\n", n);
 		for(i = 0; i < n; i++) {
 			if((events[i].events & EPOLLERR) ||
 				(events[i].events & EPOLLHUP) ||
 				(!(events[i].events & EPOLLIN))) {
-				perror("something went wrong");
+				perror("closing socket");
 				close(events[i].data.fd);
 				continue;
 			} else if(serv_sock == events[i].data.fd) {
@@ -127,7 +130,7 @@ int main(int argc, char ** argv) {
 					sock = getnameinfo(&in_addr, in_len, hbuf, sizeof(hbuf),
 						sbuf, sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV);
 					if(sock == 0) {
-						printf("Accepted connnection");
+						printf("Accepted connnection\n");
 					}
 					sock = make_non_blocking(in_fd);
 
@@ -139,36 +142,19 @@ int main(int argc, char ** argv) {
 				continue;
 			} else {
 				// we have data to be read
-				int done = 1;
-				// while(1) {
-					ssize_t count;
-					char buf[512];
-					int cur_read = read(events[i].data.fd, buf, sizeof(buf));
-					buf[cur_read] = 0;
-					execargs_t ** cur = read_and_split_in_commands(buf);
-					int out = STDOUT_FILENO;
-					dup2(events[i].data.fd, STDOUT_FILENO);
-					int res = runpiped(cur, get_commands_count());
-					dup2(out, STDOUT_FILENO);
-
-					// if(count == -1) {
-					// 	if(errno != EAGAIN) {
-					// 		done = 1;
-					// 	}
-					// 	break;
-					// }
-					// else if(count == 0) {
-					// 	// remote has closed the connection
-					// 	done = 1;
-					// 	break;
-					// }
-					// sock = write(events[i].data.fd, buf, count);
-					// test(sock, "write");
-				// }
-				if(done) {
-					printf("Closed connection");
-					close(events[i].data.fd);
-				}
+				ssize_t count;
+				char buf[512];
+				int cur_read = read(events[i].data.fd, buf, sizeof(buf));
+				check(cur_read, "read error");
+				buf[cur_read] = 0;
+				execargs_t ** cur = read_and_split_in_commands(buf);
+				int out = dup(STDOUT_FILENO);
+				check(dup2(events[i].data.fd, STDOUT_FILENO), "dup2 error");
+				int res = runpiped(cur, get_commands_count());
+				check(dup2(out, STDOUT_FILENO), "dup2 error");
+				close(out);
+				// check(close(out), "close error");
+				// events[i].events ^= EPOLLIN;
 			}
 		}
 	}	
