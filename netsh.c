@@ -37,7 +37,8 @@ int create_and_bind_socket(int port) {
 	int sockfd;
 	struct addrinfo * i;
 	for(i = resinfo; i != NULL; i = i->ai_next) {
-		sockfd = socket(i->ai_family, i->ai_socktype, i->ai_protocol);
+		// set soket CLOEXEC to close after process finish
+		sockfd = socket(i->ai_family, i->ai_socktype | SOCK_CLOEXEC, i->ai_protocol);
 		if(sockfd == -1) continue;
 		int yes = 1;
 		status = setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
@@ -136,9 +137,9 @@ int main(int argc, char ** argv) {
 							socklen_t in_len;
 							int in_fd;
 							char hbuf[NI_MAXHOST], sbuf[NI_MAXSERV];
-
 							in_len = sizeof(in_addr);
-							in_fd = accept(serv_sock, &in_addr, &in_len);
+							in_fd = accept4(serv_sock, &in_addr, &in_len, SOCK_CLOEXEC);
+
 							if(in_fd == -1) {
 								if((errno == EAGAIN) ||
 									(errno == EWOULDBLOCK)) {
@@ -155,7 +156,7 @@ int main(int argc, char ** argv) {
 								printf("Accepted connnection\n");
 							}
 							sock = make_non_blocking(in_fd);
-
+							
 							event.data.fd = in_fd;
 							event.events = EPOLLIN | EPOLLET;
 							sock = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, in_fd, &event);
