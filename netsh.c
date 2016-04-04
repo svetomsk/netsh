@@ -74,93 +74,118 @@ int create_server_socket(int port) {
 #define MAXEVENTS 16
 
 int main(int argc, char ** argv) {
-	int serv_sock, sock;
-	int epoll_fd;
-	struct epoll_event event;
-	struct epoll_event *events;
+	if(argc != 2) {
+		perror("Usage: ./netsh <port>");
+		return -1;
+	}
 
-	serv_sock = create_and_bind_socket(1234);
-	sock = make_non_blocking(serv_sock);
-	sock = listen(serv_sock, SOMAXCONN);
+	int port = atoi(argv[1]);
 
-	epoll_fd = epoll_create1(0);
-	test(epoll_fd, "epoll_create1");
+	int child = fork();
+	test(child, "fork error");
+	if(child == 0) {
+		int id = setsid();
+		test(id, "setsid error");
+		child = fork();
+		test(child, "fork error");
+		if(child == 0) {
+			int pid_file = open("/tmp/netsh.pid", O_CLOEXEC | O_CREAT | O_RDWR);
+			test(pid_file, "open failed");
+			printf("FILE DESCR %i\n", pid_file);
+			char buf[4];
+			sprintf(buf, "%d", getpid());
+			int w = write(pid_file, buf, 4);
+			close(pid_file);
 
-	event.data.fd = serv_sock;
-	event.events = EPOLLIN | EPOLLET;
-	sock = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, serv_sock, &event);
-	test(sock, "epoll_ctl");
+			int serv_sock, sock;
+			int epoll_fd;
+			struct epoll_event event;
+			struct epoll_event *events;
 
-	events = calloc(MAXEVENTS, sizeof(event)); // buffer for data to be returned
-	
-	//main loop
-	while(1) {
-		int n, i;
-		printf("Waiting for events\n");
-		n = epoll_wait(epoll_fd, events, MAXEVENTS, -1);
-		printf("Got %i events to process\n", n);
-		for(i = 0; i < n; i++) {
-			if((events[i].events & EPOLLERR) ||
-				(events[i].events & EPOLLHUP) ||
-				(!(events[i].events & EPOLLIN))) {
-				perror("closing socket");
-				close(events[i].data.fd);
-				continue;
-			} else if(serv_sock == events[i].data.fd) {
-				//we have incoming connections
-				while(1) {
-					struct sockaddr in_addr;
-					socklen_t in_len;
-					int in_fd;
-					char hbuf[NI_MAXHOST], sbuf[NI_MAXSERV];
+			serv_sock = create_and_bind_socket(port);
+			sock = make_non_blocking(serv_sock);
+			sock = listen(serv_sock, SOMAXCONN);
 
-					in_len = sizeof(in_addr);
-					in_fd = accept(serv_sock, &in_addr, &in_len);
-					if(in_fd == -1) {
-						if((errno == EAGAIN) ||
-							(errno == EWOULDBLOCK)) {
-							break;
-							// no more incoming connections
-						} else {
-							perror("accept error");
-							break;
+			epoll_fd = epoll_create1(0);
+			test(epoll_fd, "epoll_create1");
+
+			event.data.fd = serv_sock;
+			event.events = EPOLLIN | EPOLLET;
+			sock = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, serv_sock, &event);
+			test(sock, "epoll_ctl");
+
+			events = calloc(MAXEVENTS, sizeof(event)); // buffer for data to be returned
+
+			//main loop
+			while(1) {
+				int n, i;
+				printf("Waiting for events\n");
+				n = epoll_wait(epoll_fd, events, MAXEVENTS, -1);
+				printf("Got %i events to process\n", n);
+				for(i = 0; i < n; i++) {
+					if((events[i].events & EPOLLERR) ||
+						(events[i].events & EPOLLHUP) ||
+						(!(events[i].events & EPOLLIN))) {
+						perror("closing socket");
+						close(events[i].data.fd);
+						continue;
+					} else if(serv_sock == events[i].data.fd) {
+						//we have incoming connections
+						while(1) {
+							struct sockaddr in_addr;
+							socklen_t in_len;
+							int in_fd;
+							char hbuf[NI_MAXHOST], sbuf[NI_MAXSERV];
+
+							in_len = sizeof(in_addr);
+							in_fd = accept(serv_sock, &in_addr, &in_len);
+							if(in_fd == -1) {
+								if((errno == EAGAIN) ||
+									(errno == EWOULDBLOCK)) {
+									break;
+									// no more incoming connections
+								} else {
+									perror("accept error");
+									break;
+								}
+							}
+							sock = getnameinfo(&in_addr, in_len, hbuf, sizeof(hbuf),
+								sbuf, sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV);
+							if(sock == 0) {
+								printf("Accepted connnection\n");
+							}
+							sock = make_non_blocking(in_fd);
+
+							event.data.fd = in_fd;
+							event.events = EPOLLIN | EPOLLET;
+							sock = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, in_fd, &event);
+							test(sock, "epoll_ctl");
 						}
+						continue;
+					} else {
+						// we have data to be read
+						ssize_t count;
+						char buf[512];
+						int cur_read = read(events[i].data.fd, buf, sizeof(buf));
+						test(cur_read, "read error");
+						buf[cur_read] = 0;
+						if(strlen(buf) == 0) { // ^C ^D and others
+							continue;
+						}
+						execargs_t ** cur = read_and_split_in_commands(buf);
+						int out = dup(STDOUT_FILENO);
+						test(out, "dup error");
+						test(dup2(events[i].data.fd, STDOUT_FILENO), "dup2 error");
+						int res = runpiped(cur, get_commands_count());
+						test(dup2(out, STDOUT_FILENO), "dup2 error");
+						test(close(out), "close error");
 					}
-					sock = getnameinfo(&in_addr, in_len, hbuf, sizeof(hbuf),
-						sbuf, sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV);
-					if(sock == 0) {
-						printf("Accepted connnection\n");
-					}
-					sock = make_non_blocking(in_fd);
-
-					event.data.fd = in_fd;
-					event.events = EPOLLIN | EPOLLET;
-					sock = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, in_fd, &event);
-					test(sock, "epoll_ctl");
 				}
-				continue;
-			} else {
-				// we have data to be read
-				ssize_t count;
-				char buf[512];
-				int cur_read = read(events[i].data.fd, buf, sizeof(buf));
-				check(cur_read, "read error");
-				buf[cur_read] = 0;
-				if(strlen(buf) == 0) { // ^C ^D and others
-					continue;
-				}
-				execargs_t ** cur = read_and_split_in_commands(buf);
-				int out = dup(STDOUT_FILENO);
-				check(out, "dup error");
-				check(dup2(events[i].data.fd, STDOUT_FILENO), "dup2 error");
-				int res = runpiped(cur, get_commands_count());
-				check(dup2(out, STDOUT_FILENO), "dup2 error");
-				check(close(out), "close error");
-			}
+			}	
+			free(events);
+			close(serv_sock);
 		}
-	}	
-	free(events);
-	close(serv_sock);
-
+	}
 	return EXIT_SUCCESS;
+
 }
